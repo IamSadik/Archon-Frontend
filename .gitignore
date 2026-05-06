@@ -1,0 +1,18 @@
+node_modules
+
+
+#Next.js build output
+.next
+
+
+#SQLite database
+db.sqlite
+db.sqlite.db  
+*.sql
+#Environment variables
+.env
+.env.local
+
+Documentation files 
+API_DOCUMENTATION.md
+*.txt
