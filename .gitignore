@@ -14,5 +14,5 @@ db.sqlite.db
 .env.local
 
 Documentation files 
-API_DOCUMENTATION.md
+
 *.txt
