@@ -21,7 +21,7 @@ import {
     FolderCog,
     FolderGit2,
     FolderOpen,
-    Image,
+    Image as ImageIcon,
     Minus,
     MoonStar,
     Palette,
@@ -221,7 +221,7 @@ export default function SettingsPage() {
         if (/^(app|api|server|route|routes|services|controllers?|endpoints?)$/.test(normalized)) return <FolderGit2 className='h-4 w-4' />
         if (/^(config|settings|infra|meta|admin|lib|utils|shared|common|core|helpers?)$/.test(normalized)) return <FolderCog className='h-4 w-4' />
         if (/^(docs?|readme|guide|manual|book|knowledge)$/.test(normalized)) return <BookOpen className='h-4 w-4' />
-        if (/^(public|static|assets?|images?|img|media|icons?)$/.test(normalized)) return <Image className='h-4 w-4' />
+        if (/^(public|static|assets?|images?|img|media|icons?)$/.test(normalized)) return <ImageIcon className='h-4 w-4' />
         if (/^(test|tests|specs?|__tests__|e2e|playwright|cypress)$/.test(normalized)) return <Sparkles className='h-4 w-4' />
         if (/^(db|database|data|schema|migrations?)$/.test(normalized)) return <Database className='h-4 w-4' />
         if (/^(auth|security|private|secret|lock)$/.test(normalized)) return <Shield className='h-4 w-4' />
@@ -542,11 +542,11 @@ export default function SettingsPage() {
                                             <div className='flex min-w-0'>
                                                 {workspacePreferences.showLineNumbers ? <div className='w-14 shrink-0 border-r border-current/10 bg-black/10 px-3 py-4 font-mono text-right text-[11px] leading-7 opacity-60'><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div></div> : null}
                                                 <div className='min-w-0 space-y-2 px-4 py-4 font-mono leading-7 whitespace-pre-wrap break-words' style={{ fontSize: `${editorFontSize}px` }}>
-                                                    <div><span className={getEditorTokenClass('comment')}>// Workspace preview with font sizing and resolved theme</span></div>
+                                                    <div><span className={getEditorTokenClass('comment')}>{'// Workspace preview with font sizing and resolved theme'}</span></div>
                                                     <div><span className={getEditorTokenClass('keyword')}>const</span>{' '}<span className={getEditorTokenClass('title')}>theme</span>{' '}<span className='opacity-70'>=</span>{' '}<span className={getEditorTokenClass('string')}>'{editorThemeLabel}'</span></div>
                                                     <div><span className={getEditorTokenClass('keyword')}>const</span>{' '}<span className={getEditorTokenClass('title')}>folderStyle</span>{' '}<span className='opacity-70'>=</span>{' '}<span className={getEditorTokenClass('string')}>'{workspacePreferences.folderIconStyle}'</span></div>
-                                                    <div><span className={getEditorTokenClass('keyword')}>return</span>{' '}<span className={getEditorTokenClass('accent')}>workspace</span>{' '}<span className='opacity-70'>// preview</span></div>
-                                                    <div><span className={getEditorTokenClass('comment')}>// Font size is applied to the actual editor too</span></div>
+                                                    <div><span className={getEditorTokenClass('keyword')}>return</span>{' '}<span className={getEditorTokenClass('accent')}>workspace</span>{' '}<span className='opacity-70'>{'// preview'}</span></div>
+                                                    <div><span className={getEditorTokenClass('comment')}>{'// Font size is applied to the actual editor too'}</span></div>
                                                 </div>
                                             </div>
                                         </div>

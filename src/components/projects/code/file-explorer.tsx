@@ -29,7 +29,7 @@ import {
     Scissors,
     Shield,
     Sparkles,
-    Image,
+    Image as ImageIcon,
     TerminalSquare,
     Trash2,
     Check,
@@ -113,7 +113,7 @@ function renderSmartFolderGlyph(folderName: string) {
     if (/^(config|settings|infra|meta|admin)$/.test(normalized)) return <FolderCog className='h-4 w-4' />
     if (/^(lib|utils|shared|common|core|helpers?)$/.test(normalized)) return <FolderCog className='h-4 w-4' />
     if (/^(docs?|readme|guide|manual|book|knowledge)$/.test(normalized)) return <BookOpen className='h-4 w-4' />
-    if (/^(public|static|assets?|images?|img|media|icons?)$/.test(normalized)) return <Image className='h-4 w-4' />
+    if (/^(public|static|assets?|images?|img|media|icons?)$/.test(normalized)) return <ImageIcon className='h-4 w-4' />
     if (/^(test|tests|specs?|__tests__|e2e|playwright|cypress)$/.test(normalized)) return <Sparkles className='h-4 w-4' />
     if (/^(db|database|data|schema|migrations?)$/.test(normalized)) return <Database className='h-4 w-4' />
     if (/^(auth|security|private|secret|lock)$/.test(normalized)) return <Shield className='h-4 w-4' />
