@@ -115,7 +115,16 @@ export default function LoginPage() {
           </Link>
         </Button>
       </div>
-      <div className="absolute top-6 right-6 z-50">
+      <div className="absolute top-6 right-6 z-50 flex flex-col items-end gap-2">
+        <div className="w-64 rounded-md border border-border/60 bg-background/90 p-3 text-xs text-muted-foreground shadow-sm backdrop-blur">
+          <p>Loading may take some time due to free tier hosting.</p>
+          <p className="mt-2">
+            <span className="font-medium text-foreground">Email:</span> sadikmahmud01@gmail.com
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Password:</span> test@123
+          </p>
+        </div>
         <ModeToggle />
       </div>
       
