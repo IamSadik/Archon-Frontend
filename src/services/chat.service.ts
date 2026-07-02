@@ -99,7 +99,7 @@ export const chatService = {
   ) {
     const baseURL = api.defaults.baseURL || '';
     const endpoint = `${baseURL}/chat/stream-sse/`;
-    const token = getCookie('auth_token') || localStorage.getItem('token');
+    const token = getCookie('auth_token');
 
     let response: Response | null = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {

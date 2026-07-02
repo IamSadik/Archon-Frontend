@@ -63,11 +63,16 @@ export function deleteCookie(name: string, path: string = '/'): void {
 }
 
 /**
- * Clear all authentication cookies
+ * Clear all authentication cookies and any legacy localStorage entries.
  */
 export function clearAuthCookies(): void {
   deleteCookie('auth_token')
   deleteCookie('refresh_token')
+  // Remove legacy localStorage tokens that may still exist from older sessions.
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
+  }
 }
 
 /**

@@ -69,25 +69,17 @@ export default function LoginPage() {
       const refreshToken = response.data.refresh_token || response.data.refresh
       
       if (authToken) {
-        // Set secure cookies using utility function
+        // Store tokens in Secure; SameSite=Strict cookies only.
+        // localStorage is intentionally NOT used — tokens in localStorage are
+        // readable by any JS on the page (XSS risk) and show up plainly in
+        // DevTools → Application → Local Storage.
         setAuthTokens(authToken, refreshToken)
-        
-        // Keep in localStorage as fallback during migration
-        // TODO: Remove this once backend sets httpOnly cookies
-        localStorage.setItem("token", authToken)
-        if (refreshToken) {
-          localStorage.setItem("refreshToken", refreshToken)
-        }
-        
         toast.success("Welcome back!")
         router.push("/dashboard")
       } else {
-        console.error("No token found in response. Full response:", response.data)
         toast.error("Login succeeded but no token received")
       }
     } catch (error: any) {
-      console.error("Login error:", error)
-      console.error("Response data:", error.response?.data)  // See exact backend error
       if (error.response?.status === 401) {
         toast.error("Invalid credentials")
       } else if (error.response?.data) {

@@ -30,14 +30,7 @@ api.interceptors.request.use((config) => {
     config.url?.includes('/auth/refresh')
 
   if (!isAuthEndpoint) {
-    // Try to get token from cookie first (more secure)
-    let token = getCookie('auth_token')
-
-    // Fallback to localStorage during migration
-    if (!token) {
-      token = localStorage.getItem('token')
-    }
-
+    const token = getCookie('auth_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -72,9 +65,6 @@ api.interceptors.response.use(
     // Handle both 401 (Unauthorized) and 403 (Forbidden) as authentication failures
     if (status === 401 || status === 403) {
       clearAuthCookies()
-      localStorage.removeItem('token')
-      localStorage.removeItem('refreshToken')
-
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
         window.location.href = '/login?expired=true'
       }
