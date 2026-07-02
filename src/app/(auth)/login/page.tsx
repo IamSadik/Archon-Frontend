@@ -108,12 +108,17 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <div className="absolute top-6 left-6 z-50">
-        <Button variant="ghost" asChild>
-          <Link href="/" className="flex items-center">
-            <ChevronLeft className="mr-2 h-4 w-4" />
-            Back
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" asChild>
+            <Link href="/" className="flex items-center">
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              Back
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/features">Features</Link>
+          </Button>
+        </div>
       </div>
       <div className="absolute top-6 right-6 z-50 flex flex-col items-end gap-2">
         <div className="w-64 rounded-md border border-border/60 bg-background/90 p-3 text-xs text-muted-foreground shadow-sm backdrop-blur">

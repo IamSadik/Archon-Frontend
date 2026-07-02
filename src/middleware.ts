@@ -5,8 +5,17 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value
   const { pathname } = request.nextUrl
 
+  // Always allow static files from public/ and common asset extensions.
+  if (
+    pathname.startsWith('/archon-ss/') ||
+    pathname.startsWith('/images/') ||
+    /\.(png|jpg|jpeg|gif|webp|svg|ico)$/i.test(pathname)
+  ) {
+    return NextResponse.next()
+  }
+
   // Public paths that don't require authentication
-  const publicPaths = ['/', '/login', '/register', '/forgot-password']
+  const publicPaths = ['/', '/login', '/register', '/forgot-password', '/features', '/for-recruiters']
   const isPublicPath = publicPaths.includes(pathname)
 
   // If trying to access protected route without token, redirect to login

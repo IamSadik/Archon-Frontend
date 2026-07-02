@@ -26,6 +26,9 @@ export default function HomePage() {
           <span className="text-xl">Archon</span>
         </Link>
         <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
+          <Link className="text-sm font-medium hover:underline underline-offset-4 flex items-center" href="/features">
+            Features
+          </Link>
           <ModeToggle />
           <Link className="text-sm font-medium hover:underline underline-offset-4 flex items-center" href="/login">
             Sign In
@@ -50,6 +53,9 @@ export default function HomePage() {
                 </Button>
                 <Button variant="outline" size="lg" asChild>
                    <Link href="/login">Log In</Link>
+                </Button>
+                <Button variant="ghost" size="lg" asChild>
+                  <Link href="/features">View Features</Link>
                 </Button>
               </div>
             </div>

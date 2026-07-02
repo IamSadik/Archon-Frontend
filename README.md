@@ -27,6 +27,30 @@ This frontend connects to the Archon backend API (Django/DRF) to provide a seaml
 - 🎨 **Dark/Light Mode** — Theme switching with system preference detection
 - 📱 **Responsive Design** — Fully responsive UI using TailwindCSS
 - ✅ **Type-Safe** — Built with TypeScript for enhanced development experience
+- 🧭 **Features Overview Page** — Public technical walkthrough at `/features` with architecture diagrams, Mermaid workflow charts, and product screenshots
+
+---
+
+## 🧭 Features Overview Page
+
+The frontend includes a dedicated features page to explain how Archon works end-to-end:
+
+- **Route:** `/features`
+- **Entry points:** linked from both landing page (`/`) and login page (`/login`)
+- **Purpose:** explain architecture, multi-agent workflow, RAG memory model, tooling, and shipped UI capabilities in one place
+- **Assets:** screenshots rendered from `public/archon-ss`
+
+### Workflow Markup Used on the Page
+
+```text
+User Request
+   -> API/WebSocket ingress
+   -> Master Orchestrator
+   -> Planner + Executor
+   -> Context + Vector Search
+   -> Memory (STM/LTM)
+   -> Response + Realtime Progress
+```
 
 ---
 
