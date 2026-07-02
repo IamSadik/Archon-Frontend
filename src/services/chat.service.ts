@@ -1,6 +1,11 @@
 import api from '@/lib/api';
 import { ChatSession, ChatMessage, ChatStreamChunk, CodeChangesPreviewResponse } from '@/types';
 import { getCookie } from '@/lib/cookies';
+import { isRetryableBackendError, wakeBackend } from '@/lib/backend-health';
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export const chatService = {
   async getSessions(projectId: string) {
@@ -96,29 +101,46 @@ export const chatService = {
     const endpoint = `${baseURL}/chat/stream-sse/`;
     const token = getCookie('auth_token') || localStorage.getItem('token');
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        session_id: sessionId,
-        project_id: projectId,
-        message,
-        apply_code_changes: options?.applyCodeChanges ?? false,
-        focus_mode: options?.focusMode ?? 'codebase',
-        focus_path: options?.focusPath,
-        selected_file_path: options?.selectedFilePath,
-        selected_file_content: options?.selectedFileContent,
-        include_context: options?.includeContext ?? true,
-        include_memory: options?.includeMemory ?? true,
-      }),
-    });
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt === 0) {
+        await wakeBackend();
+      } else {
+        await sleep(attempt * 2000);
+      }
 
-    if (!response.ok || !response.body) {
-      const text = await response.text();
-      throw new Error(text || `Streaming request failed (${response.status})`);
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          project_id: projectId,
+          message,
+          apply_code_changes: options?.applyCodeChanges ?? false,
+          focus_mode: options?.focusMode ?? 'codebase',
+          focus_path: options?.focusPath,
+          selected_file_path: options?.selectedFilePath,
+          selected_file_content: options?.selectedFileContent,
+          include_context: options?.includeContext ?? true,
+          include_memory: options?.includeMemory ?? true,
+        }),
+      });
+
+      if (response.ok) {
+        break;
+      }
+
+      if (!isRetryableBackendError(response.status) || attempt === 3) {
+        const text = await response.text();
+        throw new Error(text || `Streaming request failed (${response.status})`);
+      }
+    }
+
+    if (!response || !response.ok || !response.body) {
+      throw new Error('Streaming request failed');
     }
 
     const reader = response.body.getReader();

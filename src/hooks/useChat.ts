@@ -7,7 +7,8 @@ export const useChatSessions = (projectId: string) => {
     queryFn: () => chatService.getSessions(projectId),
     enabled: !!projectId,
     staleTime: 20_000,
-    retry: 1,
+    retry: 4,
+    retryDelay: (attempt) => Math.min(attempt * 2000, 8000),
     placeholderData: (previousData) => previousData,
   });
 };
@@ -17,6 +18,8 @@ export const useChatMessages = (sessionId: string) => {
     queryKey: ['chat', 'session', sessionId, 'messages'],
     queryFn: () => chatService.getMessages(sessionId),
     enabled: !!sessionId,
+    retry: 4,
+    retryDelay: (attempt) => Math.min(attempt * 2000, 8000),
     // Poll every 3 seconds for new messages if needed, or use websockets (preferred)
     // refetchInterval: 3000, 
   });
