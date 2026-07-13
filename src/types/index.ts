@@ -229,11 +229,15 @@ export interface ChatMessage {
 }
 
 export interface ChatStreamChunk {
-    type: 'chunk' | 'complete' | 'error'
-    session_id: string
+    type: 'chunk' | 'complete' | 'error' | 'status' | 'agent_status'
+    session_id?: string
     message_id?: string
     content: string
+    agent?: string
+    intent?: string
+    confidence?: number
     applied_files?: string[]
+    metadata?: Record<string, any>
     telemetry?: {
         first_token_latency_ms?: number | null
         total_latency_ms?: number | null

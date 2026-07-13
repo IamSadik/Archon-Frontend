@@ -91,6 +91,7 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
     const [isApplyingPreview, setIsApplyingPreview] = useState(false)
     const [applyConflicts, setApplyConflicts] = useState<Array<{ path: string; expected_hash: string; current_hash: string }>>([])
     const [streamTelemetry, setStreamTelemetry] = useState<{ firstTokenMs?: number; totalMs?: number } | null>(null)
+    const [agentStatuses, setAgentStatuses] = useState<Array<{ agent: string; content: string }>>([])
     const [isSessionActionPending, setIsSessionActionPending] = useState(false)
     const sessionSearchRef = useRef<HTMLInputElement>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -330,6 +331,7 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
             }
 
             setIsStreaming(true)
+            setAgentStatuses([])
             setStreamingAssistant({
                 id: `assistant-stream-${Date.now()}`,
                 role: 'assistant',
@@ -350,6 +352,12 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                     selectedFilePath: focusMode === 'file' ? activeContext?.path : undefined,
                     selectedFileContent: focusMode === 'file' ? activeContext?.content : undefined,
                     onChunk: (chunk: ChatStreamChunk) => {
+                        if (chunk.type === 'agent_status') {
+                            setAgentStatuses((prev) => [
+                                ...prev.slice(-4),
+                                { agent: chunk.agent || 'agent', content: chunk.content },
+                            ])
+                        }
                         if (chunk.type === 'chunk') {
                             setStreamingAssistant((prev) => prev ? {
                                 ...prev,
@@ -360,7 +368,11 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                 }
             )
 
-            const appliedFiles: string[] = Array.isArray(finalChunk?.applied_files) ? finalChunk.applied_files : []
+            const appliedFiles: string[] = Array.isArray(finalChunk?.applied_files)
+                ? finalChunk.applied_files
+                : Array.isArray(finalChunk?.metadata?.coder_result?.files_modified)
+                    ? finalChunk.metadata.coder_result.files_modified
+                    : []
             appliedFiles.forEach((filePath) => {
                 queryClient.invalidateQueries({ queryKey: ['ide-file', projectId, filePath] })
             })
@@ -374,6 +386,7 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                 totalMs: finalChunk?.telemetry?.total_latency_ms ?? undefined,
             })
             setStreamingAssistant(null)
+            setAgentStatuses([])
             setIsStreaming(false)
         } catch (error: any) {
             setInput(messageToSend)
@@ -636,6 +649,21 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                         <span className='ml-2'>| Total: <span className='font-medium'>{streamTelemetry.totalMs}ms</span></span>
                                     ) : null}
                                 </div>
+
+                                {agentStatuses.length > 0 ? (
+                                    <div className='space-y-1 rounded-md border border-primary/20 bg-primary/5 px-2 py-2 text-xs'>
+                                        {agentStatuses.map((status, index) => (
+                                            <div key={`${status.agent}-${index}`} className='flex items-start gap-2 text-muted-foreground'>
+                                                <Loader2 className='mt-0.5 h-3 w-3 shrink-0 animate-spin text-primary' />
+                                                <span>
+                                                    <span className='font-medium capitalize text-foreground'>{status.agent}</span>
+                                                    {': '}
+                                                    {status.content}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : null}
 
                                 {sessionsError ? (
                                     <p className='text-xs text-destructive'>Session sync failed. You can still send a message to recreate a session.</p>

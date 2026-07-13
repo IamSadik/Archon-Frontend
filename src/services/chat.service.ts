@@ -196,18 +196,35 @@ export const chatService = {
       includeMemory?: boolean;
     }
   ) {
-    const response = await api.post<CodeChangesPreviewResponse>('/chat/preview/', {
-      session_id: sessionId,
-      project_id: projectId,
-      message,
-      focus_mode: options?.focusMode ?? 'codebase',
-      focus_path: options?.focusPath,
-      selected_file_path: options?.selectedFilePath,
-      selected_file_content: options?.selectedFileContent,
-      include_context: options?.includeContext ?? true,
-      include_memory: options?.includeMemory ?? true,
-    });
-    return response.data;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt === 0) {
+        await wakeBackend();
+      } else {
+        await sleep(attempt * 2000);
+      }
+
+      try {
+        const response = await api.post<CodeChangesPreviewResponse>('/chat/preview/', {
+          session_id: sessionId,
+          project_id: projectId,
+          message,
+          focus_mode: options?.focusMode ?? 'codebase',
+          focus_path: options?.focusPath,
+          selected_file_path: options?.selectedFilePath,
+          selected_file_content: options?.selectedFileContent,
+          include_context: options?.includeContext ?? true,
+          include_memory: options?.includeMemory ?? true,
+        });
+        return response.data;
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (!isRetryableBackendError(status) || attempt === 3) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error('Preview request failed after retries');
   },
 
   async applyReviewedChanges(
