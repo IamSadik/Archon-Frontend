@@ -1,9 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { clearAuthCookies, getCookie } from './cookies'
 import { isRetryableBackendError, wakeBackend } from './backend-health'
-
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const API_URL = RAW_API_URL.replace(/\/+$/, '')
+import { API_BASE_URL } from './env'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   __retryCount?: number
@@ -14,7 +12,7 @@ function sleep(ms: number) {
 }
 
 export const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },

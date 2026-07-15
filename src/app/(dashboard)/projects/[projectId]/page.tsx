@@ -41,34 +41,6 @@ import { ProjectMemory } from '@/components/project-memory' // Import ProjectMem
 import { ProjectSettingsDialog } from '@/components/projects/project-settings-dialog'
 import { MessageFormatter } from '@/components/chat/message-formatter'
 
-function normalizePath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\.\//, '').trim()
-}
-
-function collectPathLikeStrings(value: any, keyHint = ''): string[] {
-  if (value == null) return []
-
-  if (typeof value === 'string') {
-    const candidate = normalizePath(value)
-    const keyLooksFileish = /(file|path|target|source|output|artifact)/i.test(keyHint)
-    const valueLooksPath = /[\\/]/.test(candidate) || /\.[a-z0-9]{1,8}$/i.test(candidate)
-    if (candidate && candidate.length < 220 && (keyLooksFileish || valueLooksPath)) {
-      return [candidate]
-    }
-    return []
-  }
-
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => collectPathLikeStrings(entry, keyHint))
-  }
-
-  if (typeof value === 'object') {
-    return Object.entries(value).flatMap(([k, v]) => collectPathLikeStrings(v, k))
-  }
-
-  return []
-}
-
 export default function ProjectDetailsPage() {
   const params = useParams()
   const projectId = params.projectId as string
@@ -178,9 +150,11 @@ export default function ProjectDetailsPage() {
   })
 
   const { data: recentTelemetry } = useQuery({
-    queryKey: ['recent-execution-telemetry', projectId, agentSessions?.length || 0],
-    enabled: !!projectId && !!agentSessions && agentSessions.length > 0,
+    queryKey: ['recent-file-changes', projectId, agentSessions?.length || 0],
+    enabled: !!projectId,
+    refetchInterval: 30_000,
     queryFn: async () => {
+      const fileChanges = await projectService.getRecentFileChanges(projectId, 8)
       const recentSessions = [...(agentSessions || [])]
         .sort((a: any, b: any) => {
           const aTime = new Date(a.updated_at || a.created_at).getTime()
@@ -191,13 +165,17 @@ export default function ProjectDetailsPage() {
 
       const executionGroups = await Promise.all(
         recentSessions.map(async (session: any) => {
-          const executions = await agentService.getExecutions(session.id)
-          return (executions || []).map((execution: any) => ({
-            ...execution,
-            _sessionId: session.id,
-            _sessionName: session.session_name,
-            _sessionStatus: session.status,
-          }))
+          try {
+            const executions = await agentService.getExecutions(session.id)
+            return (executions || []).map((execution: any) => ({
+              ...execution,
+              _sessionId: session.id,
+              _sessionName: session.session_name,
+              _sessionStatus: session.status,
+            }))
+          } catch {
+            return []
+          }
         })
       )
 
@@ -209,39 +187,9 @@ export default function ProjectDetailsPage() {
           return bTime - aTime
         })
 
-      const touchedFiles = new Map<string, { path: string; at: string; source: string }>()
-
-      executions.forEach((execution: any) => {
-        const executionAt = execution.created_at || execution.updated_at || new Date().toISOString()
-
-        collectPathLikeStrings(execution.output_data, 'output_data').forEach((path) => {
-          if (!touchedFiles.has(path)) {
-            touchedFiles.set(path, {
-              path,
-              at: executionAt,
-              source: execution.step_name || execution.agent_type || 'execution',
-            })
-          }
-        })
-
-          ; (execution.tool_calls || []).forEach((toolCall: any) => {
-            const fromParams = collectPathLikeStrings(toolCall.parameters, 'parameters')
-            const fromResult = collectPathLikeStrings(toolCall.result, 'result')
-              ;[...fromParams, ...fromResult].forEach((path) => {
-                if (!touchedFiles.has(path)) {
-                  touchedFiles.set(path, {
-                    path,
-                    at: toolCall.created_at || executionAt,
-                    source: toolCall.tool_name || 'tool',
-                  })
-                }
-              })
-          })
-      })
-
       return {
         recentExecutions: executions.slice(0, 5),
-        touchedFiles: Array.from(touchedFiles.values()).slice(0, 6),
+        touchedFiles: fileChanges?.files || [],
       }
     },
   })
@@ -415,7 +363,7 @@ export default function ProjectDetailsPage() {
               <CardHeader>
                 <CardTitle>Workflow Health</CardTitle>
                 <CardDescription>
-                  Live status from IDE and recent agent execution.
+                  Live status from IDE workspace, agentic chat, and agent sessions.
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-4'>
@@ -456,7 +404,7 @@ export default function ProjectDetailsPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className='text-sm text-muted-foreground'>No file changes captured yet from recent executions.</p>
+                    <p className='text-sm text-muted-foreground'>No file changes yet from agentic chat, agents, or the workspace.</p>
                   )}
                 </div>
 

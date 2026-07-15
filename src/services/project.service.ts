@@ -51,6 +51,16 @@ export const projectService = {
     return response.data;
   },
 
+  async getRecentFileChanges(id: string, limit = 12) {
+    const response = await api.get<{
+      project_id: string
+      files: Array<{ path: string; at: string; source: string }>
+    }>(`/projects/${id}/recent_file_changes/`, {
+      params: { limit },
+    })
+    return response.data
+  },
+
   async archiveProject(id: string) {
     const response = await api.post(`/projects/${id}/archive/`);
     return response.data;

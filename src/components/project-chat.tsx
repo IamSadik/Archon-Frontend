@@ -8,6 +8,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import toast from 'react-hot-toast'
 import { MessageFormatter } from './chat/message-formatter'
+import { AgentPipelineTrace, extractAgentTrace, type AgentTraceItem } from './chat/agent-pipeline-trace'
 import { useQueryClient } from '@tanstack/react-query'
 import { chatService } from '@/services/chat.service'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -61,17 +62,13 @@ function scoreCodeIntent(message: string, activeContext?: IDEFocusContext, focus
     return score
 }
 
-function shouldAutoPreviewCodeChanges(message: string, activeContext?: IDEFocusContext, focusMode: FocusMode = 'codebase', resolvedFocusPath?: string) {
+function isCodeTaskMessage(message: string, activeContext?: IDEFocusContext, focusMode: FocusMode = 'codebase', resolvedFocusPath?: string) {
     return scoreCodeIntent(message, activeContext, focusMode, resolvedFocusPath) > 0
 }
 
-function shouldDirectApplyCodeChanges(message: string) {
-    const text = message.trim().toLowerCase()
-    if (!text) return false
-
-    const writeVerb = /(write|create|generate|update|edit|populate|fill)\b/i
-    const readmeTarget = /\b(readme(?:\.md)?|markdown file|md file|\.md)\b/i
-    return writeVerb.test(text) && readmeTarget.test(text)
+function shouldDirectApplyCodeChanges(message: string, activeContext?: IDEFocusContext, focusMode: FocusMode = 'codebase', resolvedFocusPath?: string) {
+    // Agentic IDE: code tasks run through coder agent and apply files directly
+    return isCodeTaskMessage(message, activeContext, focusMode, resolvedFocusPath)
 }
 
 export function ProjectChat({ projectId, className, activeContext }: ProjectChatProps) {
@@ -91,7 +88,13 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
     const [isApplyingPreview, setIsApplyingPreview] = useState(false)
     const [applyConflicts, setApplyConflicts] = useState<Array<{ path: string; expected_hash: string; current_hash: string }>>([])
     const [streamTelemetry, setStreamTelemetry] = useState<{ firstTokenMs?: number; totalMs?: number } | null>(null)
-    const [agentStatuses, setAgentStatuses] = useState<Array<{ agent: string; content: string }>>([])
+    const [agentStatuses, setAgentStatuses] = useState<AgentTraceItem[]>([])
+    const [activeAgentMeta, setActiveAgentMeta] = useState<{
+        route?: string
+        intent?: string
+        llmProvider?: string
+        llmModel?: string
+    } | null>(null)
     const [isSessionActionPending, setIsSessionActionPending] = useState(false)
     const sessionSearchRef = useRef<HTMLInputElement>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -261,6 +264,8 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                 // Invalidate IDE tree to trigger refresh
                 setTimeout(() => {
                     queryClient.invalidateQueries({ queryKey: ['ide-tree', projectId] })
+                    queryClient.invalidateQueries({ queryKey: ['ide-tree-count', projectId] })
+                    queryClient.invalidateQueries({ queryKey: ['recent-file-changes', projectId] })
                 }, 500)
             }
         }
@@ -300,38 +305,15 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
         try {
             const sessionId = await ensureSession()
 
-            const directApply = shouldDirectApplyCodeChanges(messageToSend)
-            const autoPreview = !directApply && shouldAutoPreviewCodeChanges(messageToSend, activeContext, focusMode, resolvedFocusPath)
-
-            if (autoPreview) {
-                setPreviewLoading(true)
-                const preview = await chatService.previewCodeChanges(
-                    sessionId,
-                    projectId,
-                    messageToSend,
-                    {
-                        focusMode,
-                        focusPath: resolvedFocusPath,
-                        selectedFilePath: focusMode === 'file' ? activeContext?.path : undefined,
-                        selectedFileContent: focusMode === 'file' ? activeContext?.content : undefined,
-                    }
-                )
-                setPreviewResponse(preview)
-                setPreviewMessage(messageToSend)
-                setSelectedPreviewPath(preview.preview?.[0]?.path || '')
-                const defaultSelection: Record<string, boolean> = {}
-                    ; (preview.preview || []).forEach((item) => {
-                        defaultSelection[item.path] = true
-                    })
-                setSelectedPreviewPaths(defaultSelection)
-                setApplyConflicts([])
-                setIsPreviewOpen(true)
-                setPreviewLoading(false)
-                return
-            }
+            const codeTask = isCodeTaskMessage(messageToSend, activeContext, focusMode, resolvedFocusPath)
+            const directApply = shouldDirectApplyCodeChanges(messageToSend, activeContext, focusMode, resolvedFocusPath)
 
             setIsStreaming(true)
-            setAgentStatuses([])
+            setAgentStatuses([
+                { agent: 'orchestrator', content: 'Initializing agentic pipeline…' },
+                ...(codeTask ? [{ agent: 'coder', content: 'Preparing planner + coder sub-agents…' }] : []),
+            ])
+            setActiveAgentMeta(codeTask ? { route: codeTask ? 'execution' : 'query' } : null)
             setStreamingAssistant({
                 id: `assistant-stream-${Date.now()}`,
                 role: 'assistant',
@@ -354,8 +336,19 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                     onChunk: (chunk: ChatStreamChunk) => {
                         if (chunk.type === 'agent_status') {
                             setAgentStatuses((prev) => [
-                                ...prev.slice(-4),
-                                { agent: chunk.agent || 'agent', content: chunk.content },
+                                ...prev.slice(-6),
+                                {
+                                    agent: chunk.agent || 'agent',
+                                    content: chunk.content,
+                                    intent: chunk.intent,
+                                    confidence: chunk.confidence,
+                                },
+                            ])
+                        }
+                        if (chunk.type === 'status' && chunk.content) {
+                            setAgentStatuses((prev) => [
+                                ...prev.slice(-6),
+                                { agent: 'system', content: chunk.content },
                             ])
                         }
                         if (chunk.type === 'chunk') {
@@ -363,6 +356,18 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                 ...prev,
                                 content: `${prev.content}${chunk.content}`,
                             } : prev)
+                        }
+                        if (chunk.type === 'complete' && chunk.metadata) {
+                            setActiveAgentMeta({
+                                route: chunk.metadata.route,
+                                intent: chunk.metadata.intent,
+                                llmProvider: chunk.metadata.llm_provider,
+                                llmModel: chunk.metadata.llm_model,
+                            })
+                            const savedTrace = extractAgentTrace(chunk.metadata)
+                            if (savedTrace.length > 0) {
+                                setAgentStatuses(savedTrace)
+                            }
                         }
                     },
                 }
@@ -378,6 +383,8 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
             })
             if (appliedFiles.length > 0) {
                 queryClient.invalidateQueries({ queryKey: ['ide-tree', projectId] })
+                queryClient.invalidateQueries({ queryKey: ['ide-tree-count', projectId] })
+                queryClient.invalidateQueries({ queryKey: ['recent-file-changes', projectId] })
             }
             queryClient.invalidateQueries({ queryKey: ['chat', 'session', sessionId, 'messages'] })
             queryClient.invalidateQueries({ queryKey: ['chat', projectId, 'sessions'] })
@@ -385,8 +392,19 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                 firstTokenMs: finalChunk?.telemetry?.first_token_latency_ms ?? undefined,
                 totalMs: finalChunk?.telemetry?.total_latency_ms ?? undefined,
             })
+            if (finalChunk?.metadata) {
+                setActiveAgentMeta({
+                    route: finalChunk.metadata.route,
+                    intent: finalChunk.metadata.intent,
+                    llmProvider: finalChunk.metadata.llm_provider,
+                    llmModel: finalChunk.metadata.llm_model,
+                })
+                const savedTrace = extractAgentTrace(finalChunk.metadata)
+                if (savedTrace.length > 0) {
+                    setAgentStatuses(savedTrace)
+                }
+            }
             setStreamingAssistant(null)
-            setAgentStatuses([])
             setIsStreaming(false)
         } catch (error: any) {
             setInput(messageToSend)
@@ -441,6 +459,8 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
             })
             if (appliedFiles.length > 0) {
                 queryClient.invalidateQueries({ queryKey: ['ide-tree', projectId] })
+                queryClient.invalidateQueries({ queryKey: ['ide-tree-count', projectId] })
+                queryClient.invalidateQueries({ queryKey: ['recent-file-changes', projectId] })
             }
             queryClient.invalidateQueries({ queryKey: ['chat', 'session', previewResponse.session_id, 'messages'] })
             queryClient.invalidateQueries({ queryKey: ['chat', projectId, 'sessions'] })
@@ -590,10 +610,63 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                     <MessageSquare className='h-4 w-4 text-primary' /> Agentic Chat
                                 </CardTitle>
 
+                                <div className='rounded-md border border-primary/25 bg-gradient-to-r from-primary/10 to-transparent p-2.5 text-xs'>
+                                    <div className='mb-1.5 font-semibold text-primary'>Multi-agent pipeline</div>
+                                    <div className='flex flex-wrap gap-1.5'>
+                                        {['Orchestrator', 'Memory', 'Planner', 'Coder'].map((agent) => (
+                                            <Badge
+                                                key={agent}
+                                                variant={isStreaming ? 'default' : 'secondary'}
+                                                className='text-[10px] font-medium'
+                                            >
+                                                {isStreaming ? <Loader2 className='mr-1 h-3 w-3 animate-spin' /> : <Sparkles className='mr-1 h-3 w-3' />}
+                                                {agent}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                    <p className='mt-1.5 text-muted-foreground'>
+                                        Code requests route through planner + coder, edit workspace files, and update project memory.
+                                    </p>
+                                </div>
+
                                 <div className='flex flex-wrap items-center gap-2 text-xs'>
                                     <Badge variant='secondary' className='gap-1'>
                                         <Sparkles className='h-3 w-3' /> IDE-aware
                                     </Badge>
+                                    <Button
+                                        type='button'
+                                        variant='outline'
+                                        size='sm'
+                                        className='h-7 text-xs'
+                                        disabled={!input.trim() || isStreaming || previewLoading}
+                                        onClick={async () => {
+                                            const text = input.trim()
+                                            if (!text) return
+                                            setPreviewLoading(true)
+                                            try {
+                                                const sessionId = await ensureSession()
+                                                const preview = await chatService.previewCodeChanges(sessionId, projectId, text, {
+                                                    focusMode,
+                                                    focusPath: resolvedFocusPath,
+                                                    selectedFilePath: focusMode === 'file' ? activeContext?.path : undefined,
+                                                    selectedFileContent: focusMode === 'file' ? activeContext?.content : undefined,
+                                                })
+                                                setPreviewResponse(preview)
+                                                setPreviewMessage(text)
+                                                setSelectedPreviewPath(preview.preview?.[0]?.path || '')
+                                                const defaultSelection: Record<string, boolean> = {}
+                                                ;(preview.preview || []).forEach((item) => { defaultSelection[item.path] = true })
+                                                setSelectedPreviewPaths(defaultSelection)
+                                                setIsPreviewOpen(true)
+                                            } catch (error: any) {
+                                                toast.error(error?.message || 'Preview failed')
+                                            } finally {
+                                                setPreviewLoading(false)
+                                            }
+                                        }}
+                                    >
+                                        Preview edits
+                                    </Button>
                                     <Button
                                         type='button'
                                         variant='outline'
@@ -650,18 +723,9 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                     ) : null}
                                 </div>
 
-                                {agentStatuses.length > 0 ? (
-                                    <div className='space-y-1 rounded-md border border-primary/20 bg-primary/5 px-2 py-2 text-xs'>
-                                        {agentStatuses.map((status, index) => (
-                                            <div key={`${status.agent}-${index}`} className='flex items-start gap-2 text-muted-foreground'>
-                                                <Loader2 className='mt-0.5 h-3 w-3 shrink-0 animate-spin text-primary' />
-                                                <span>
-                                                    <span className='font-medium capitalize text-foreground'>{status.agent}</span>
-                                                    {': '}
-                                                    {status.content}
-                                                </span>
-                                            </div>
-                                        ))}
+                                {isStreaming && agentStatuses.length > 0 ? (
+                                    <div className='text-xs text-primary'>
+                                        Agent pipeline running…
                                     </div>
                                 ) : null}
 
@@ -679,12 +743,30 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                             </div>
                                         ) : null}
 
-                                        {displayMessages?.map((msg) => (
+                                        {displayMessages?.map((msg) => {
+                                            const isStreamingAssistant = 'optimistic' in msg && msg.optimistic && 'status' in msg && msg.status === 'streaming'
+                                            const savedTrace = msg.role === 'assistant' ? extractAgentTrace(msg.metadata) : []
+                                            const trace = isStreamingAssistant ? agentStatuses : savedTrace
+                                            const meta = isStreamingAssistant
+                                                ? activeAgentMeta
+                                                : (msg.metadata || null)
+
+                                            return (
                                             <div key={msg.id} className={`flex w-full min-w-0 items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse justify-end' : 'justify-start'}`}>
                                                 <div className={msg.role === 'user' ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground' : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted'}>
                                                     {msg.role === 'user' ? <User className='h-4 w-4' /> : <Bot className='h-4 w-4' />}
                                                 </div>
                                                 <div className={msg.role === 'user' ? 'ml-auto min-w-0 w-full max-w-[min(42rem,calc(100%-3.5rem))] overflow-hidden rounded-lg bg-primary p-3 text-sm text-primary-foreground' : 'min-w-0 w-full max-w-[min(42rem,calc(100%-3.5rem))] overflow-hidden rounded-lg bg-muted p-3 text-sm'}>
+                                                    {msg.role === 'assistant' && (trace.length > 0 || meta?.route || meta?.llm_provider) ? (
+                                                        <AgentPipelineTrace
+                                                            trace={trace}
+                                                            isActive={isStreamingAssistant}
+                                                            route={meta?.route}
+                                                            intent={meta?.intent}
+                                                            llmProvider={meta?.llm_provider || meta?.llmProvider}
+                                                            llmModel={meta?.llm_model || meta?.llmModel}
+                                                        />
+                                                    ) : null}
                                                     <div className='mb-2 min-w-0 max-w-full break-words [overflow-wrap:anywhere]'>
                                                         <MessageFormatter content={msg.content} />
                                                     </div>
@@ -695,7 +777,7 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                        )})}
 
                                         {!messagesLoading && messages && messages.length === 0 ? (
                                             <div className='py-10 text-center text-sm text-muted-foreground'>
