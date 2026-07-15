@@ -13,7 +13,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { chatService } from '@/services/chat.service'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import type { CodeChangesPreviewResponse, ChatStreamChunk } from '@/types'
+import type { CodeChangesPreviewResponse, ChatStreamChunk, ChatMessage } from '@/types'
 
 type FocusMode = 'codebase' | 'folder' | 'file'
 
@@ -36,6 +36,12 @@ interface OptimisticMessage {
     created_at: string
     optimistic: true
     status?: 'sending' | 'streaming'
+}
+
+function isStreamingOptimisticMessage(
+    msg: ChatMessage | OptimisticMessage
+): msg is OptimisticMessage & { status: 'streaming' } {
+    return 'optimistic' in msg && msg.optimistic === true && msg.status === 'streaming'
 }
 
 function scoreCodeIntent(message: string, activeContext?: IDEFocusContext, focusMode: FocusMode = 'codebase', resolvedFocusPath?: string) {
@@ -744,12 +750,12 @@ export function ProjectChat({ projectId, className, activeContext }: ProjectChat
                                         ) : null}
 
                                         {displayMessages?.map((msg) => {
-                                            const isStreamingAssistant = 'optimistic' in msg && msg.optimistic && 'status' in msg && msg.status === 'streaming'
-                                            const savedTrace = msg.role === 'assistant' ? extractAgentTrace(msg.metadata) : []
+                                            const isStreamingAssistant = isStreamingOptimisticMessage(msg)
+                                            const savedTrace = msg.role === 'assistant' ? extractAgentTrace('metadata' in msg ? msg.metadata : undefined) : []
                                             const trace = isStreamingAssistant ? agentStatuses : savedTrace
                                             const meta = isStreamingAssistant
                                                 ? activeAgentMeta
-                                                : (msg.metadata || null)
+                                                : ('metadata' in msg ? msg.metadata : null) || null
 
                                             return (
                                             <div key={msg.id} className={`flex w-full min-w-0 items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse justify-end' : 'justify-start'}`}>
